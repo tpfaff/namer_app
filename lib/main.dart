@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
         title: 'Namer App',
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.grey),
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.pink),
         ),
         home: MyHomePage(),
       ),
@@ -28,22 +28,28 @@ class MyApp extends StatelessWidget {
 class MyAppState extends ChangeNotifier {
   var current = WordPair.random();
   var favorites = <WordPair>[];
+  var history = <WordPair>[];
+  GlobalKey? historyListKey;
 
   void getNext() {
+    history.insert(0, current);
+    var animatedList = historyListKey?.currentState as AnimatedListState?;
+    animatedList?.insertItem(0);
     current = WordPair.random();
     notifyListeners();
   }
 
-  void toggleFavorite() {
-    if (favorites.contains(current)) {
-      favorites.remove(current);
+  void toggleFavorite(WordPair pair) {
+    pair = pair ?? current;
+    if (favorites.contains(pair)) {
+      favorites.remove(pair);
     } else {
-      favorites.add(current);
+      favorites.add(pair);
     }
     notifyListeners();
   }
 
-  void remove(WordPair favorite){
+  void remove(WordPair favorite) {
     favorites.remove(favorite);
     notifyListeners();
   }
@@ -59,9 +65,10 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    var colorScheme = Theme.of(context).colorScheme;
     Widget page;
 
-    switch(selectedIndex){
+    switch (selectedIndex) {
       case 0:
         page = GeneratorPage();
       case 1:
@@ -70,6 +77,13 @@ class _MyHomePageState extends State<MyHomePage> {
         throw UnimplementedError('no widget for page selection $selectedIndex');
     }
 
+    var mainArea = ColoredBox(
+      color: colorScheme.surfaceVariant,
+      child: AnimatedSwitcher(
+        duration: Duration(milliseconds: 200) ,
+        child: page,)
+        ,);
+        
     return Scaffold(
       body: Row(
         children: [
@@ -135,7 +149,6 @@ class BigCard extends StatelessWidget {
   }
 }
 
-
 class GeneratorPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -153,14 +166,23 @@ class GeneratorPage extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          Expanded(
+            flex: 3,
+            child: HistoryListView(),
+          ),
+          SizedBox(
+            height: 10,
+          ),
           BigCard(pair: pair),
-          SizedBox(height: 10),
+          SizedBox(
+            height: 10,
+          ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               ElevatedButton.icon(
                 onPressed: () {
-                  appState.toggleFavorite();
+                  appState.toggleFavorite(appState.current);
                 },
                 icon: Icon(icon),
                 label: Text('Like'),
@@ -174,6 +196,7 @@ class GeneratorPage extends StatelessWidget {
               ),
             ],
           ),
+          Spacer(flex: 2)
         ],
       ),
     );
@@ -183,7 +206,6 @@ class GeneratorPage extends StatelessWidget {
 class FavoritesPage extends StatefulWidget {
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
-  
 }
 
 class _FavoritesPageState extends State<FavoritesPage> {
@@ -195,19 +217,76 @@ class _FavoritesPageState extends State<FavoritesPage> {
         .copyWith(color: theme.colorScheme.onPrimary);
     //var iconData = Icons.clear;
 
-    if(appState.favorites.isEmpty){
+    if (appState.favorites.isEmpty) {
       return Center(
         child: Text("No favorites yet"),
       );
     }
 
-    return ListView(children: [
-      Text('Favorites:', style: style,),
-      for(var favorite in appState.favorites)
-        ListTile(leading: Icon(Icons.delete), title: Text(favorite.asLowerCase), onTap: (){
-          appState.remove(favorite);
-        },),
-    ],);
+    return ListView(
+      children: [
+        Text(
+          'Favorites:',
+          style: style,
+        ),
+        for (var favorite in appState.favorites)
+          ListTile(
+            leading: Icon(Icons.delete),
+            title: Text(favorite.asLowerCase),
+            onTap: () {
+              appState.remove(favorite);
+            },
+          ),
+      ],
+    );
   }
 }
 
+class HistoryListView extends StatefulWidget {
+  @override
+  State<StatefulWidget> createState() {
+    return _HistoryListViewState();
+  }
+}
+
+class _HistoryListViewState extends State<HistoryListView> {
+  final _key = GlobalKey();
+  static const Gradient _maskingGradient = LinearGradient(
+    colors: [Colors.transparent, Colors.black],
+    stops: [0.0, 0.5],
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final appState = context.watch<MyAppState>();
+    appState.historyListKey = _key;
+
+    return ShaderMask(
+        shaderCallback: (bounds) => _maskingGradient.createShader(bounds),
+        blendMode: BlendMode.dstIn,
+        child: AnimatedList(
+            key: _key,
+            reverse: true,
+            padding: EdgeInsets.only(top: 100),
+            initialItemCount: appState.history.length,
+            itemBuilder: (context, index, animation) {
+              final pair = appState.history[index];
+              return SizeTransition(
+                  sizeFactor: animation,
+                  child: Center(
+                      child: TextButton.icon(
+                          onPressed: () {
+                            appState.toggleFavorite(pair);
+                          },
+                          icon: appState.favorites.contains(pair)
+                              ? Icon(Icons.favorite, size: 12)
+                              : SizedBox(),
+                          label: Text(
+                            pair.asLowerCase,
+                            semanticsLabel: pair.asPascalCase,
+                          ))));
+            }));
+  }
+}
